@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  php:
+    build: .
+    container_name: fenex_php
+    ports:
+      - "8080:80"
+    volumes:
+      - ./:/var/www/html:z
+    depends_on:
+      - mariadb
+    environment:
+      - DB_HOST=mariadb
+      - DB_NAME=fenex
+      - DB_USER=xeatuser
+      - DB_PASSWORD=xeatpass
+    networks:
+      - fenex_network
+
+  mariadb:
+    image: mariadb:11.2
+    container_name: fenex_mariadb
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: fenex
+      MYSQL_USER: xeatuser
+      MYSQL_PASSWORD: xeatpass
+    volumes:
+      - mariadb_data:/var/lib/mysql:z
+    networks:
+      - fenex_network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: fenex_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: xeatuser
+      PMA_PASSWORD: xeatpass
+      MYSQL_ROOT_PASSWORD: rootpassword
+    depends_on:
+      - mariadb
+    networks:
+      - fenex_network
+
+networks:
+  fenex_network:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+    driver: local
