@@ -22,17 +22,23 @@ if ($method === 'GET') {
         
         switch ($action) {
             case 'products':
-                $stmt = $db->query("SELECT ID, Meno, Popis, Cena, IF(Obrazok IS NOT NULL AND LENGTH(Obrazok) > 0, 1, 0) as Obrazok FROM produkty ORDER BY ID");
+                $stmt = $db->query("SELECT ID, Meno, Popis, Cena, IF(Obrazok IS NOT NULL AND LENGTH(Obrazok) > 0, 1, 0) as has_image FROM produkty ORDER BY ID");
                 $response['products'] = $stmt->fetchAll();
                 $response['success'] = true;
                 break;
                 
             case 'product':
                 $id = (int)($_GET['id'] ?? 0);
-                $stmt = $db->prepare("SELECT * FROM produkty WHERE ID = ?");
+                // Don't fetch BLOB data - just indicate if image exists
+                $stmt = $db->prepare("SELECT ID, Meno, Popis, Cena, mime_type, IF(Obrazok IS NOT NULL AND LENGTH(Obrazok) > 0, 1, 0) as has_image FROM produkty WHERE ID = ?");
                 $stmt->execute([$id]);
-                $response['product'] = $stmt->fetch();
-                $response['success'] = true;
+                $product = $stmt->fetch();
+                if ($product) {
+                    $response['product'] = $product;
+                    $response['success'] = true;
+                } else {
+                    $response['error'] = 'Product not found';
+                }
                 break;
                 
             case 'orders':

@@ -28,14 +28,16 @@ function getDB() {
 // Get all products
 function getAllProducts() {
     $db = getDB();
-    $stmt = $db->query("SELECT * FROM produkty ORDER BY ID");
+    // Don't load BLOB data - just check if image exists
+    $stmt = $db->query("SELECT ID, Meno, Popis, Cena, mime_type, IF(Obrazok IS NOT NULL AND LENGTH(Obrazok) > 0, 1, 0) as Obrazok FROM produkty ORDER BY ID");
     return $stmt->fetchAll();
 }
 
 // Get product by ID
 function getProductById($id) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM produkty WHERE ID = ?");
+    // Don't load BLOB data - just check if image exists
+    $stmt = $db->prepare("SELECT ID, Meno, Popis, Cena, mime_type, IF(Obrazok IS NOT NULL AND LENGTH(Obrazok) > 0, 1, 0) as Obrazok FROM produkty WHERE ID = ?");
     $stmt->execute([$id]);
     return $stmt->fetch();
 }
@@ -43,7 +45,8 @@ function getProductById($id) {
 // Search products
 function searchProducts($query) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM produkty WHERE Meno LIKE ? OR Popis LIKE ?");
+    // Don't load BLOB data - just check if image exists
+    $stmt = $db->prepare("SELECT ID, Meno, Popis, Cena, mime_type, IF(Obrazok IS NOT NULL AND LENGTH(Obrazok) > 0, 1, 0) as Obrazok FROM produkty WHERE Meno LIKE ? OR Popis LIKE ?");
     $searchTerm = '%' . $query . '%';
     $stmt->execute([$searchTerm, $searchTerm]);
     return $stmt->fetchAll();

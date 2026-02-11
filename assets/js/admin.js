@@ -41,11 +41,17 @@ async function loadProducts() {
         data.products.forEach(product => {
             const div = document.createElement('div');
             div.className = 'admin-product-item';
+            // Escape HTML to prevent XSS
+            const escapedName = escapeHtml(product.Meno);
+            const imageHtml = product.has_image 
+                ? `<img src="api/image.php?id=${product.ID}" alt="${escapedName}" onerror="this.style.display='none'">`
+                : '<div style="width:80px;height:60px;background:#333;border-radius:5px;margin-right:15px;"></div>';
+            
             div.innerHTML = `
-                ${product.Obrazok && product.Obrazok.length > 0 ? `<img src="api/image.php?id=${product.ID}" alt="${product.Meno}">` : '<div style="width:80px;height:60px;background:#333;border-radius:5px;margin-right:15px;"></div>'}
+                ${imageHtml}
                 <div class="admin-product-info">
-                    <strong>${product.Meno}</strong><br>
-                    <span style="color:#ccc;">${product.Cena}€</span>
+                    <strong>${escapedName}</strong><br>
+                    <span style="color:#ccc;">${parseFloat(product.Cena).toFixed(2)}€</span>
                 </div>
                 <div class="admin-actions">
                     <button class="edit-btn" onclick="editProduct(${product.ID})">Upraviť</button>
@@ -79,12 +85,12 @@ async function loadOrders() {
             div.className = 'admin-order-item';
             div.innerHTML = `
                 <div style="flex:1;cursor:pointer;" onclick="toggleOrderItems(${order.ID})">
-                    <strong>#${order.ID} - ${order.customer_name}</strong> (${order.email})<br>
-                    <span style="color:#ccc;">Suma: ${order.total_price}€</span>
+                    <strong>#${order.ID} - ${escapeHtml(order.customer_name)}</strong> (${escapeHtml(order.email)})<br>
+                    <span style="color:#ccc;">Suma: ${parseFloat(order.total_price).toFixed(2)}€</span>
                     <span class="status-badge status-${order.status || 'new'}" style="margin-left:10px;">${order.status || 'new'}</span><br>
                     <span style="color:#999;font-size:12px;">${order.created_at}</span>
-                    <div class="order-items">Adresa: ${order.address}</div>
-                    ${order.note ? `<div class="order-items">Poznámka: ${order.note}</div>` : ''}
+                    <div class="order-items">Adresa: ${escapeHtml(order.address)}</div>
+                    ${order.note ? `<div class="order-items">Poznámka: ${escapeHtml(order.note)}</div>` : ''}
                     <div id="order-items-${order.ID}" class="order-items-detail" style="display:none;margin-top:10px;padding:10px;background:rgba(0,0,0,0.2);border-radius:5px;"></div>
                 </div>
                 <div class="admin-actions">
@@ -116,7 +122,7 @@ async function toggleOrderItems(orderId) {
             
             if (data.items && data.items.length > 0) {
                 itemsDiv.innerHTML = '<strong>Položky:</strong><br>' + data.items.map(item => 
-                    `<div style="margin:5px 0;">${item.quantity}x ${item.product_name} - ${item.price}€</div>`
+                    `<div style="margin:5px 0;">${item.quantity}x ${escapeHtml(item.product_name)} - ${parseFloat(item.price).toFixed(2)}€</div>`
                 ).join('');
                 itemsDiv.style.display = 'block';
             } else {
@@ -201,9 +207,9 @@ async function loadContacts() {
             div.className = 'admin-contact-item';
             div.innerHTML = `
                 <div style="flex:1;">
-                    <strong>${contact.name}</strong> (${contact.email})<br>
+                    <strong>${escapeHtml(contact.name)}</strong> (${escapeHtml(contact.email)})<br>
                     <span class="status-badge status-${contact.status}">${contact.status}</span><br>
-                    <p style="margin:10px 0;color:#ccc;">${contact.message}</p>
+                    <p style="margin:10px 0;color:#ccc;">${escapeHtml(contact.message)}</p>
                     <span style="color:#999;font-size:12px;">${contact.created_at}</span>
                 </div>
                 <div class="admin-actions">
@@ -236,7 +242,7 @@ async function loadUsers() {
             div.className = 'admin-user-item';
             div.innerHTML = `
                 <div style="flex:1;">
-                    <strong>${user.name}</strong> (${user.email})<br>
+                    <strong>${escapeHtml(user.name)}</strong> (${escapeHtml(user.email)})<br>
                     ${user.is_admin ? '<span class="status-badge status-new">Admin</span>' : '<span class="status-badge status-read">User</span>'}
                     <span style="color:#999;font-size:12px;display:block;margin-top:5px;">Registrovaný: ${user.created_at}</span>
                 </div>
@@ -345,26 +351,66 @@ async function deleteUser(userId) {
 
 // Edit product
 async function editProduct(id) {
+    // Get modal and form elements
+    const modal = document.getElementById('edit-product-modal');
+    const form = document.getElementById('edit-product-form');
+    const preview = document.getElementById('current-image-preview');
+    
+    // Reset form
+    form.reset();
+    preview.innerHTML = '<p style="color:#999;">Načítavam...</p>';
+    
+    // Show modal FIRST (before fetching data)
+    modal.style.display = 'flex';
+    
     try {
         const response = await fetch(`api/admin.php?action=product&id=${id}`);
-        const data = await response.json();
-        const product = data.product;
         
-        document.getElementById('edit-product-id').value = product.ID;
-        document.getElementById('edit-product-name').value = product.Meno;
-        document.getElementById('edit-product-description').value = product.Popis;
-        document.getElementById('edit-product-price').value = product.Cena;
-        
-        const preview = document.getElementById('current-image-preview');
-        if (product.Obrazok) {
-            preview.innerHTML = `<img src="api/image.php?id=${product.ID}" alt="Current image">`;
-        } else {
-            preview.innerHTML = '<p style="color:#999;">Žiadny obrázok</p>';
+        // Check if response is ok
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        document.getElementById('edit-product-modal').style.display = 'flex';
+        // Check if response has content
+        const text = await response.text();
+        if (!text) {
+            throw new Error('Empty response from server');
+        }
+        
+        // Try to parse JSON
+        const data = JSON.parse(text);
+        
+        if (!data.success || !data.product) {
+            throw new Error(data.error || 'Failed to load product');
+        }
+        
+        const product = data.product;
+        
+        // Fill form with product data
+        document.getElementById('edit-product-id').value = product.ID;
+        document.getElementById('edit-product-name').value = product.Meno || '';
+        document.getElementById('edit-product-description').value = product.Popis || '';
+        document.getElementById('edit-product-price').value = parseFloat(product.Cena).toFixed(2);
+        
+        // Show current image if exists (using has_image flag)
+        if (product.has_image) {
+            // Add cache-busting timestamp to force image reload
+            preview.innerHTML = `
+                <p style="margin:10px 0 5px 0;font-size:14px;color:#ccc;">Aktuálny obrázok:</p>
+                <img src="api/image.php?id=${product.ID}&t=${Date.now()}" 
+                     alt="Current product image" 
+                     style="max-width:200px;border-radius:8px;"
+                     onerror="this.parentElement.innerHTML='<p style=color:red;>Chyba pri načítaní obrázka</p>'">
+            `;
+        } else {
+            preview.innerHTML = '<p style="color:#999;font-size:14px;">Produkt nemá obrázok</p>';
+        }
+        
     } catch (error) {
         console.error('Error loading product:', error);
+        alert('Chyba pri načítaní produktu: ' + error.message);
+        // Close modal on error
+        modal.style.display = 'none';
     }
 }
 
@@ -391,28 +437,39 @@ document.getElementById('edit-product-form').addEventListener('submit', async (e
         
         const data = await response.json();
         
+        if (!data.success) {
+            alert(data.error || 'Chyba pri aktualizácii produktu');
+            return;
+        }
+        
         // Upload image if provided
         if (imageFile) {
             const formData = new FormData();
             formData.append('id', id);
             formData.append('image', imageFile);
             
-            await fetch('api/image.php', {
+            const imageResponse = await fetch('api/image.php', {
                 method: 'POST',
                 body: formData
             });
+            
+            const imageData = await imageResponse.json();
+            
+            if (!imageData.success) {
+                alert('Produkt bol aktualizovaný, ale chyba pri nahrávaní obrázka: ' + (imageData.error || 'Unknown error'));
+                document.getElementById('edit-product-modal').style.display = 'none';
+                loadProducts();
+                return;
+            }
         }
         
-        if (data.success) {
-            alert('Produkt bol úspešne aktualizovaný!');
-            document.getElementById('edit-product-modal').style.display = 'none';
-            loadProducts();
-        } else {
-            alert(data.error || 'Chyba pri aktualizácii produktu');
-        }
+        alert('Produkt bol úspešne aktualizovaný!');
+        document.getElementById('edit-product-modal').style.display = 'none';
+        loadProducts();
+        
     } catch (error) {
         console.error('Error updating product:', error);
-        alert('Chyba pri aktualizácii produktu');
+        alert('Chyba pri aktualizácii produktu: ' + error.message);
     }
 });
 
@@ -441,6 +498,14 @@ async function markAsRead(id) {
 document.querySelector('#edit-product-modal .close').addEventListener('click', () => {
     document.getElementById('edit-product-modal').style.display = 'none';
 });
+
+// Helper function to escape HTML and prevent XSS
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // Load initial data
 loadProducts();
