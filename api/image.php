@@ -22,12 +22,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['id'])) {
         $product = $stmt->fetch();
         
         if ($product && $product['Obrazok']) {
-            header('Content-Type: ' . ($product['mime_type'] ?: 'image/jpeg'));
+            $mime = $product['mime_type'] ?: 'image/jpeg';
+            header('Content-Type: ' . $mime);
             header('Content-Length: ' . strlen($product['Obrazok']));
             header('Cache-Control: public, max-age=86400'); // Cache for 1 day
             echo $product['Obrazok'];
         } else {
-            // Return placeholder image URL
+            // Return placeholder image URL or 404
             header('HTTP/1.1 404 Not Found');
             echo 'Image not found';
         }
@@ -64,18 +65,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $file = $_FILES['image'];
+
+    // 1. Check for PHP upload errors FIRST
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $errorMessage = 'File upload failed.';
+        switch ($file['error']) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                $errorMessage = 'File is too large (exceeds server limits).';
+                break;
+            case UPLOAD_ERR_PARTIAL:
+                $errorMessage = 'File was only partially uploaded.';
+                break;
+            case UPLOAD_ERR_NO_FILE:
+                $errorMessage = 'No file was uploaded.';
+                break;
+            case UPLOAD_ERR_NO_TMP_DIR:
+                $errorMessage = 'Missing a temporary folder.';
+                break;
+            case UPLOAD_ERR_CANT_WRITE:
+                $errorMessage = 'Failed to write file to disk.';
+                break;
+            case UPLOAD_ERR_EXTENSION:
+                $errorMessage = 'File upload stopped by extension.';
+                break;
+            default:
+                $errorMessage = 'Unknown upload error code: ' . $file['error'];
+        }
+        
+        http_response_code(400);
+        echo json_encode(['error' => $errorMessage]);
+        exit;
+    }
+
+    // 2. Validate tmp_name before using it
+    if (empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid upload (empty tmp_name).']);
+        exit;
+    }
+
     $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    
+    // Now it is safe to call mime_content_type
     $mimeType = mime_content_type($file['tmp_name']);
     
     if (!in_array($mimeType, $allowedTypes)) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.']);
-        exit;
-    }
-    
-    if ($file['size'] > 5 * 1024 * 1024) { // 5MB limit
-        http_response_code(400);
-        echo json_encode(['error' => 'File too large. Maximum size is 5MB.']);
         exit;
     }
     

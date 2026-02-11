@@ -17,4 +17,7 @@ RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/Allo
 
 WORKDIR /var/www/html
 
+# Copy custom PHP configuration (increase upload limits)
+COPY docker/php.ini /usr/local/etc/php/conf.d/99-custom.ini
+
 EXPOSE 80
