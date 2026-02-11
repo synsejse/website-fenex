@@ -2,8 +2,14 @@
 require_once __DIR__ . '/../includes/db.php';
 
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+// Respond to CORS preflight
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 // Get product image
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['id'])) {
@@ -33,17 +39,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['id'])) {
 }
 
 // Upload product image
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['id'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
-    
-    $id = (int)$_POST['id'];
-    
-    if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+
+    // Accept id from POST, GET or REQUEST for robustness
+    $id = isset($_POST['id']) ? (int)$_POST['id'] : (isset($_REQUEST['id']) ? (int)$_REQUEST['id'] : (int)($_GET['id'] ?? 0));
+
+    if (!$id) {
         http_response_code(400);
-        echo json_encode(['error' => 'No image uploaded']);
+        echo json_encode(['error' => 'Missing product id']);
         exit;
     }
-    
+
+    if (!isset($_FILES['image']) || !is_array($_FILES['image'])) {
+        http_response_code(400);
+        echo json_encode([
+            'error' => 'No image uploaded',
+            'details' => [
+                'files_present' => isset($_FILES) ? array_keys($_FILES) : [],
+                'post_size' => ini_get('post_max_size')
+            ]
+        ]);
+        exit;
+    }
+
     $file = $_FILES['image'];
     $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     $mimeType = mime_content_type($file['tmp_name']);
@@ -62,11 +81,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['id'])) {
     
     try {
         $imageData = file_get_contents($file['tmp_name']);
-        
+
         $db = getDB();
         $stmt = $db->prepare("UPDATE produkty SET Obrazok = ?, mime_type = ? WHERE ID = ?");
-        $stmt->execute([$imageData, $mimeType, $id]);
-        
+        // Bind as LOB to be safe
+        $stmt->bindValue(1, $imageData, PDO::PARAM_LOB);
+        $stmt->bindValue(2, $mimeType);
+        $stmt->bindValue(3, $id, PDO::PARAM_INT);
+        $stmt->execute();
+
         echo json_encode([
             'success' => true,
             'message' => 'Image uploaded successfully',
